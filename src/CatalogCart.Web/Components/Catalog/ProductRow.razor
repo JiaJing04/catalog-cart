@@ -1,0 +1,100 @@
+@inject MoneyFormatter Money
+
+@* One catalog row: SKU + stock, name, price, image, then UOM dropdown, stepper and add button.
+   Stock and price follow the selected UOM (variation); the SKU shown is the product's. *@
+<article class="product-row">
+    <div class="product-row__info">
+        <div class="meta">
+            <span class="meta__sku">@DisplaySku</span>
+            <StockLabel Quantity="@(Selected?.StockQuantity ?? Product.StockQuantity)"
+                        InStock="@(Selected?.InStock ?? Product.InStock)" />
+        </div>
+        <h2 class="product-name">@Product.Name</h2>
+        <div class="price">@Money.Format(Selected?.Price ?? Product.Price)</div>
+    </div>
+
+    <ProductImage Url="@Product.ImageUrl" Alt="@Product.Name" />
+
+    <div class="product-row__actions">
+        <label class="uom-select">
+            <span class="visually-hidden">Unit of measurement</span>
+            @if (Product.Variations.Count > 0)
+            {
+                <select @bind="SelectedPosition">
+                    @foreach (var variation in Product.Variations)
+                    {
+                        <option value="@variation.Position">@variation.UomName</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <select disabled><option>UNIT</option></select>
+            }
+        </label>
+
+        <QuantityStepper @bind-Value="_quantity" Max="StepperMax" />
+
+        <button type="button" class="add-btn" aria-label="@($"Add {Product.Name} to cart")"
+                disabled="@(_adding || !IsAvailable)" @onclick="AddAsync">
+            <Icon Name="IconName.Plus" Size="20" />
+        </button>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public Product Product { get; set; } = default!;
+
+    /// <summary>Raised when the user taps +. The parent page adds the line to the cart.</summary>
+    [Parameter] public EventCallback<AddToCartRequest> OnAddToCart { get; set; }
+
+    private int SelectedPosition { get; set; }
+
+    private int _quantity = 1;
+
+    private bool _adding;
+
+    private ProductVariation? Selected =>
+        Product.Variations.FirstOrDefault(variation => variation.Position == SelectedPosition)
+        ?? Product.Variations.FirstOrDefault();
+
+    /// <summary>Out-of-stock UOMs can't be added (the + button is disabled).</summary>
+    private bool IsAvailable =>
+        (Selected?.InStock ?? Product.InStock) &&
+        (Selected?.StockQuantity ?? Product.StockQuantity) is null or > 0;
+
+    /// <summary>
+    /// The product SKU, as in the mockup; the dropdown already shows the UOM. Falls back to
+    /// the selected UOM's SKU only if the product has none.
+    /// </summary>
+    /// <summary>UOMs without backorders can't be stepped past their stock (at least 1, so the stepper stays valid).</summary>
+    private int StepperMax => Math.Max(1, CartService.LimitFor(
+        Selected?.StockQuantity ?? Product.StockQuantity,
+        Selected?.BackordersAllowed ?? Product.BackordersAllowed));
+
+    private string DisplaySku =>
+        string.IsNullOrWhiteSpace(Product.Sku) ? Selected?.Sku ?? string.Empty : Product.Sku;
+
+    protected override void OnParametersSet()
+    {
+        // Default to the first UOM; keep the user's choice if it still exists after a refresh.
+        if (Product.Variations.All(variation => variation.Position != SelectedPosition))
+        {
+            SelectedPosition = Product.Variations.FirstOrDefault()?.Position ?? 0;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _adding = true;
+        try
+        {
+            await OnAddToCart.InvokeAsync(new AddToCartRequest(Product, Selected, _quantity));
+            _quantity = 1; // Ready for the next add.
+        }
+        finally
+        {
+            _adding = false;
+        }
+    }
+}

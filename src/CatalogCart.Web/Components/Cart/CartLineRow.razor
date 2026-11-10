@@ -1,0 +1,70 @@
+@inject MoneyFormatter Money
+
+@* One cart line. The red layer underneath shows while swiping; swipe.js does the gesture
+   (it finds rows by the swipe-row / swipe-row__content classes and data-line-id). *@
+<div class="swipe-row" data-line-id="@Item.Id">
+    <div class="swipe-row__action" aria-hidden="true">
+        <Icon Name="IconName.Trash" Size="20" />
+        <span>Remove</span>
+    </div>
+
+    <article class="swipe-row__content cart-line">
+        <div class="cart-line__info">
+            <div class="meta">
+                <span class="meta__index">@Index.</span>
+                <span class="meta__sku">@Item.ProductSku</span>
+                <StockLabel Quantity="@Item.StockQuantity" InStock="@Item.InStock" />
+            </div>
+            <h2 class="product-name">@Item.ProductName</h2>
+            <div class="price">@Money.Format(Item.UnitPrice)</div>
+        </div>
+
+        <ProductImage Url="@Item.ImageUrl" Alt="@Item.ProductName" />
+
+        <div class="cart-line__figures">
+            <button type="button" class="figure figure--order" aria-expanded="@_editing"
+                    aria-label="@($"Quantity {Item.Quantity} {Item.UomName}, tap to change")"
+                    @onclick="() => _editing = !_editing">
+                <span class="figure__label">Order</span>
+                <span class="figure__value">
+                    @Item.Quantity @Item.UomName
+                    <Icon Name="IconName.Chevron" Size="12" Class="@(_editing ? "is-open" : null)" />
+                </span>
+            </button>
+            <div class="figure figure--total">
+                <span class="figure__label">Total</span>
+                <span class="figure__value">@Money.Format(Item.LineTotal)</span>
+            </div>
+        </div>
+
+        @if (_editing)
+        {
+            <div class="cart-line__editor">
+                <span class="cart-line__editor-label">Quantity (@Item.UomName)</span>
+                <QuantityStepper Value="Item.Quantity" ValueChanged="ChangeQuantityAsync"
+                                 Max="@Math.Max(1, CartService.LimitFor(Item.StockQuantity, Item.BackordersAllowed))" />
+                <button type="button" class="link-btn" @onclick="() => _editing = false">Done</button>
+            </div>
+        }
+
+        @* Only for UOMs that allow backorders; the others are capped at the stock.
+           Stock is as of when the line was last added to. *@
+        @if (Item.BackordersAllowed && Item.InStock && Item.StockQuantity is int stock && Item.Quantity > stock)
+        {
+            <p class="stock-warning" role="status">Only @stock in stock. The rest may be backordered.</p>
+        }
+    </article>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CartItem Item { get; set; } = default!;
+
+    /// <summary>1-based line number shown before the SKU ("1.", "2.", ...).</summary>
+    [Parameter, EditorRequired] public int Index { get; set; }
+
+    [Parameter] public EventCallback<(int LineId, int Quantity)> OnQuantityChanged { get; set; }
+
+    private bool _editing;
+
+    private Task ChangeQuantityAsync(int quantity) => OnQuantityChanged.InvokeAsync((Item.Id, quantity));
+}

@@ -1,0 +1,127 @@
+@page "/cart"
+@implements IAsyncDisposable
+@inject CartService Cart
+@inject MoneyFormatter Money
+@inject IJSRuntime JS
+
+<PageTitle>Cart</PageTitle>
+
+<AppHeader Title="Cart" BackHref="/">
+    <MenuContent>
+        <button type="button" class="menu__item menu__item--danger" role="menuitem"
+                disabled="@(Cart.LineCount == 0)" @onclick="() => _confirmClear = true">
+            Clear cart
+        </button>
+    </MenuContent>
+</AppHeader>
+
+@* Always rendered so swipe.js can attach once, on first render. *@
+<main class="cart-page" @ref="_listHost">
+    @if (!_loaded)
+    {
+        <div class="empty-state" role="status"><span class="spinner" aria-hidden="true"></span></div>
+    }
+    else if (Cart.LineCount == 0)
+    {
+        <div class="empty-state">
+            <Icon Name="IconName.Cart" Size="48" Class="empty-state__icon" />
+            <p class="empty-state__title">Your cart is empty</p>
+            <a class="link-btn" href="/">Browse products</a>
+        </div>
+    }
+    else
+    {
+        <section class="cart-list" aria-label="Cart items">
+            @for (var i = 0; i < Cart.Items.Count; i++)
+            {
+                var item = Cart.Items[i];
+                <CartLineRow @key="item.Id" Item="item" Index="i + 1" OnQuantityChanged="ChangeQuantityAsync" />
+            }
+
+            <div class="cart-list__total">
+                <span>Total</span>
+                <strong>@Money.Format(Cart.Total)</strong>
+            </div>
+        </section>
+    }
+</main>
+
+<footer class="cart-footer">
+    <div class="cart-footer__summary">
+        <span class="cart-footer__label">Total (@Cart.LineCount)</span>
+        <strong class="cart-footer__amount">@Money.Format(Cart.Total)</strong>
+    </div>
+    @* Checkout is outside the scope of the assessment. *@
+    <button type="button" class="checkout-btn" disabled="@(Cart.LineCount == 0)">Checkout</button>
+</footer>
+
+<ConfirmDialog Visible="_confirmClear"
+               Title="Clear cart?"
+               Message="@($"This removes all {Cart.LineCount} item{(Cart.LineCount == 1 ? "" : "s")} from your cart.")"
+               ConfirmText="Clear"
+               OnConfirm="ClearAsync"
+               OnCancel="() => _confirmClear = false" />
+
+@code {
+    private ElementReference _listHost;
+    private IJSObjectReference? _swipeModule;
+    private IJSObjectReference? _swipeHandle;
+    private DotNetObjectReference<CartPage>? _selfReference;
+    private bool _loaded;
+    private bool _confirmClear;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Cart.Changed += OnCartChanged;
+        await Cart.EnsureLoadedAsync();
+        _loaded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _selfReference = DotNetObjectReference.Create(this);
+        _swipeModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/swipe.js");
+        _swipeHandle = await _swipeModule.InvokeAsync<IJSObjectReference>(
+            "attachSwipeToRemove", _listHost, _selfReference);
+    }
+
+    /// <summary>Called from swipe.js once a row has been swiped far enough.</summary>
+    [JSInvokable]
+    public Task RemoveLineAsync(int lineId) => Cart.RemoveAsync(lineId);
+
+    private Task ChangeQuantityAsync((int LineId, int Quantity) change) =>
+        Cart.UpdateQuantityAsync(change.LineId, change.Quantity);
+
+    private async Task ClearAsync()
+    {
+        _confirmClear = false;
+        await Cart.ClearAsync();
+    }
+
+    // Badge, rows, footer count and totals all re-render from CartService, so they update together.
+    private void OnCartChanged() => InvokeAsync(StateHasChanged);
+
+    public async ValueTask DisposeAsync()
+    {
+        Cart.Changed -= OnCartChanged;
+        try
+        {
+            if (_swipeHandle is not null)
+            {
+                await _swipeHandle.InvokeVoidAsync("dispose");
+                await _swipeHandle.DisposeAsync();
+            }
+            if (_swipeModule is not null)
+            {
+                await _swipeModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser tab is already gone; nothing to clean up on that side.
+        }
+        _selfReference?.Dispose();
+    }
+}

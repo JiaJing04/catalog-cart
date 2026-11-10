@@ -1,0 +1,67 @@
+@inject IOptions<StoreOptions> StoreOptions
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<header class="app-header">
+    <button type="button" class="icon-btn" aria-label="Back" @onclick="GoBackAsync">
+        <Icon Name="IconName.Back" Size="20" />
+    </button>
+
+    <h1 class="app-header__title">@Title</h1>
+
+    <span class="app-header__company">@Store.CompanyName</span>
+    <span class="app-header__avatar" aria-hidden="true">@Store.CompanyInitials</span>
+
+    <div class="menu">
+        <button type="button" class="icon-btn" aria-label="More options" aria-haspopup="menu"
+                aria-expanded="@_menuOpen" @onclick="ToggleMenu">
+            <Icon Name="IconName.More" Size="22" />
+        </button>
+
+        @if (_menuOpen)
+        {
+            @* Full-screen transparent layer: tapping anywhere outside closes the menu. *@
+            <div class="menu__backdrop" @onclick="CloseMenu"></div>
+            <div class="menu__panel" role="menu" @onclick="CloseMenu">
+                @if (MenuContent is null)
+                {
+                    <span class="menu__empty">No options</span>
+                }
+                else
+                {
+                    @MenuContent
+                }
+            </div>
+        }
+    </div>
+</header>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Where Back goes. If not set, it goes back in the browser history.</summary>
+    [Parameter] public string? BackHref { get; set; }
+
+    /// <summary>Items for the ⋮ menu (e.g. Clear cart). Clicking an item also closes the menu.</summary>
+    [Parameter] public RenderFragment? MenuContent { get; set; }
+
+    private StoreOptions Store => StoreOptions.Value;
+
+    private bool _menuOpen;
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+
+    private void CloseMenu() => _menuOpen = false;
+
+    private async Task GoBackAsync()
+    {
+        if (BackHref is not null)
+        {
+            Navigation.NavigateTo(BackHref);
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("history.back");
+        }
+    }
+}

@@ -1,0 +1,17 @@
+@* Product thumbnail. If there's no image or it fails to load (e.g. offline), the placeholder is shown. *@
+<img class="product-image"
+     src="@(string.IsNullOrWhiteSpace(Url) ? PlaceholderPath : Url)"
+     onerror="this.onerror=null;this.src='img/placeholder.png';"
+     alt="@Alt"
+     loading="lazy"
+     draggable="false"
+     width="58"
+     height="58" />
+
+@code {
+    private const string PlaceholderPath = "img/placeholder.png";
+
+    [Parameter] public string? Url { get; set; }
+
+    [Parameter] public string Alt { get; set; } = string.Empty;
+}

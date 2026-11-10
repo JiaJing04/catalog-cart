@@ -1,0 +1,47 @@
+@* Inline SVG icons: no icon font or CDN, so they also render offline. *@
+<svg class="icon @Class" viewBox="0 0 24 24" width="@Size" height="@Size" aria-hidden="true" focusable="false">
+    @switch (Name)
+    {
+        case IconName.Back:
+            <path d="M15.5 4.5 8 12l7.5 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+            break;
+        case IconName.More:
+            <circle cx="12" cy="5" r="2.1" fill="currentColor" />
+            <circle cx="12" cy="12" r="2.1" fill="currentColor" />
+            <circle cx="12" cy="19" r="2.1" fill="currentColor" />
+            break;
+        case IconName.Search:
+            <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2" />
+            <path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            break;
+        case IconName.Cart:
+            <path d="M2.5 3.5h2.7l2.4 11.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.4-1.1l1.9-6.8H6.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="9.5" cy="20" r="1.6" fill="currentColor" />
+            <circle cx="17.5" cy="20" r="1.6" fill="currentColor" />
+            break;
+        case IconName.Plus:
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            break;
+        case IconName.Minus:
+            <path d="M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            break;
+        case IconName.Chevron:
+            <path d="m9 5.5 6.5 6.5L9 18.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+            break;
+        case IconName.Trash:
+            <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            break;
+        case IconName.Offline:
+            <path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="m3 3 18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            break;
+    }
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public IconName Name { get; set; }
+
+    [Parameter] public int Size { get; set; } = 24;
+
+    [Parameter] public string? Class { get; set; }
+}

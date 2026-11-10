@@ -1,0 +1,199 @@
+@page "/"
+@implements IDisposable
+@inject CatalogService Catalog
+@inject CartService Cart
+@inject IOptions<StoreOptions> StoreOptions
+
+<PageTitle>@StoreOptions.Value.CatalogTitle</PageTitle>
+
+<AppHeader Title="@StoreOptions.Value.CatalogTitle">
+    <MenuContent>
+        <button type="button" class="menu__item" role="menuitem" disabled="@_loading" @onclick="RefreshAsync">
+            Refresh products
+        </button>
+    </MenuContent>
+</AppHeader>
+
+<div class="toolbar">
+    <label class="search">
+        <Icon Name="IconName.Search" Size="20" Class="search__icon" />
+        <span class="visually-hidden">Search products</span>
+        <input type="search" placeholder="Search" autocomplete="off"
+               @bind="_searchText" @bind:event="oninput" />
+    </label>
+    <CartButton />
+</div>
+
+@if (_snapshot?.Source == CatalogSource.OfflineCache)
+{
+    <div class="banner" role="status">
+        <Icon Name="IconName.Offline" Size="18" />
+        <span class="banner__text">
+            @_snapshot.Notice
+            @if (_snapshot.LastSyncedUtc is { } synced)
+            {
+                <span class="banner__sub">Last updated @synced.ToLocalTime().ToString("d MMM yyyy, h:mm tt")</span>
+            }
+        </span>
+        <button type="button" class="banner__action" disabled="@_loading" @onclick="RefreshAsync">Retry</button>
+    </div>
+}
+
+<main class="product-list">
+    @if (_loading && _snapshot is null)
+    {
+        <div class="empty-state" role="status">
+            <span class="spinner" aria-hidden="true"></span>
+            <p>Loading products…</p>
+        </div>
+    }
+    else if (_snapshot is null || _snapshot.Products.Count == 0)
+    {
+        <div class="empty-state">
+            <p class="empty-state__title">No products yet</p>
+            <p>
+                @(_snapshot?.Source == CatalogSource.OfflineCache
+                    ? "Nothing has been downloaded yet. Connect to the internet and tap Retry."
+                    : "The catalog is empty.")
+            </p>
+        </div>
+    }
+    else if (VisibleProducts.Count == 0)
+    {
+        <div class="empty-state">
+            <p class="empty-state__title">No matches</p>
+            <p>No products match “@_searchText”.</p>
+        </div>
+    }
+    else
+    {
+        @foreach (var product in VisibleProducts)
+        {
+            <ProductRow @key="product.Id" Product="product" OnAddToCart="AddToCartAsync" />
+        }
+    }
+</main>
+
+@if (_toast is not null)
+{
+    <div class="toast @(_toastNote is null ? null : "toast--warning")" role="status">
+        <span class="toast__line">@_toast</span>
+        @if (_toastNote is not null)
+        {
+            <span class="toast__line toast__note">@_toastNote</span>
+        }
+    </div>
+}
+
+@code {
+    private CatalogSnapshot? _snapshot;
+    private bool _loading;
+    private string _searchText = string.Empty;
+    private string? _toast;
+    private string? _toastNote;
+    private CancellationTokenSource? _toastTimer;
+    private readonly CancellationTokenSource _disposed = new();
+
+    /// <summary>Products matching the search box (name or SKU, ignoring case).</summary>
+    private IReadOnlyList<Product> VisibleProducts
+    {
+        get
+        {
+            var products = _snapshot?.Products ?? [];
+            var term = _searchText.Trim();
+            if (term.Length == 0) return products;
+
+            return products.Where(product =>
+                    product.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    product.Sku.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    product.Variations.Any(variation => variation.Sku.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+        }
+    }
+
+    protected override Task OnInitializedAsync() => LoadAsync(forceRefresh: false);
+
+    private Task RefreshAsync() => LoadAsync(forceRefresh: true);
+
+    private async Task LoadAsync(bool forceRefresh)
+    {
+        _loading = true;
+        try
+        {
+            _snapshot = await Catalog.GetCatalogAsync(forceRefresh, _disposed.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The user left the page; nothing to show.
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Checked at the moment of adding: already in cart + this add vs. the known stock.
+    /// UOMs that allow backorders are added in full with a note; the others are capped at
+    /// the stock by CartService, and the toast says how many actually went in.
+    /// </summary>
+    private async Task AddToCartAsync(AddToCartRequest request)
+    {
+        var stock = request.Variation?.StockQuantity ?? request.Product.StockQuantity;
+        var backorders = request.Variation?.BackordersAllowed ?? request.Product.BackordersAllowed;
+        var inCart = Cart.QuantityInCart(request.Product.Id, request.Variation?.Id);
+
+        var added = await Cart.AddAsync(request.Product, request.Variation, request.Quantity);
+
+        var uom = request.Variation?.UomName ?? "UNIT";
+        var name = request.Product.Name;
+
+        if (added == 0)
+        {
+            await ShowToastAsync($"Not added · {name}", $"Only {stock} in stock, all already in your cart.");
+        }
+        else if (added < request.Quantity)
+        {
+            await ShowToastAsync($"Added {added} {uom} · {name}", $"Only {stock} in stock, so only {added} {(added == 1 ? "was" : "were")} added.");
+        }
+        else if (backorders && stock is int known && inCart + added > known)
+        {
+            // Only the part of this add that goes over; earlier adds were already reported.
+            var backordered = Math.Min(inCart + added - known, added);
+            await ShowToastAsync($"Added {added} {uom} · {name}", $"Only {known} in stock, {backordered} may be backordered.");
+        }
+        else
+        {
+            await ShowToastAsync($"Added {added} {uom} · {name}");
+        }
+    }
+
+    private async Task ShowToastAsync(string message, string? note = null)
+    {
+        _toastTimer?.Cancel();
+        _toastTimer = new CancellationTokenSource();
+        var token = _toastTimer.Token;
+
+        _toast = message;
+        _toastNote = note;
+        StateHasChanged();
+        try
+        {
+            // A warning stays up longer so there's time to read it.
+            await Task.Delay(TimeSpan.FromSeconds(note is null ? 1.8 : 3.5), token);
+            _toast = null;
+            _toastNote = null;
+        }
+        catch (TaskCanceledException)
+        {
+            // A newer toast replaced this one.
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed.Cancel();
+        _disposed.Dispose();
+        _toastTimer?.Cancel();
+    }
+}

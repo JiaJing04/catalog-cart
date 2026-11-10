@@ -1,0 +1,26 @@
+@implements IDisposable
+@inject CartService Cart
+
+@* Cart icon with the red badge: the number of lines in the cart. It updates
+   immediately on add/remove/clear because it listens to CartService.Changed. *@
+<a class="cart-button" href="cart" aria-label="@AriaLabel">
+    <Icon Name="IconName.Cart" Size="26" />
+    @if (Cart.LineCount > 0)
+    {
+        <span class="cart-button__badge">@(Cart.LineCount > 99 ? "99+" : Cart.LineCount.ToString())</span>
+    }
+</a>
+
+@code {
+    private string AriaLabel => $"Cart, {Cart.LineCount} item{(Cart.LineCount == 1 ? "" : "s")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Cart.Changed += OnCartChanged;
+        await Cart.EnsureLoadedAsync();
+    }
+
+    private void OnCartChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Cart.Changed -= OnCartChanged;
+}

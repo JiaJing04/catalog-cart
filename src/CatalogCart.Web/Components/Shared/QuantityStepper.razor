@@ -1,0 +1,42 @@
+@* The "−  1  +" control from the mockup. The number can also be typed. *@
+<div class="stepper">
+    <button type="button" class="stepper__btn" aria-label="Decrease quantity"
+            disabled="@(Value <= Min)" @onclick="() => SetAsync(Value - 1)">
+        <Icon Name="IconName.Minus" Size="16" />
+    </button>
+
+    <input class="stepper__value" type="text" inputmode="numeric" aria-label="Quantity"
+           value="@Value" @onchange="OnTypedAsync" />
+
+    <button type="button" class="stepper__btn" aria-label="Increase quantity"
+            disabled="@(Value >= Max)" @onclick="() => SetAsync(Value + 1)">
+        <Icon Name="IconName.Plus" Size="16" />
+    </button>
+</div>
+
+@code {
+    [Parameter] public int Value { get; set; } = 1;
+
+    [Parameter] public EventCallback<int> ValueChanged { get; set; }
+
+    [Parameter] public int Min { get; set; } = 1;
+
+    [Parameter] public int Max { get; set; } = CartService.MaxQuantity;
+
+    private Task OnTypedAsync(ChangeEventArgs e) =>
+        // Anything that isn't a number resets to the current value.
+        SetAsync(int.TryParse(e.Value?.ToString(), out var typed) ? typed : Value);
+
+    private async Task SetAsync(int value)
+    {
+        var clamped = Math.Clamp(value, Min, Max);
+        if (clamped == Value)
+        {
+            StateHasChanged(); // Re-render to undo invalid typing in the box.
+            return;
+        }
+
+        Value = clamped;
+        await ValueChanged.InvokeAsync(clamped);
+    }
+}

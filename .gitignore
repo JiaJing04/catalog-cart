@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+
+# Local SQLite database (created at runtime)
+App_Data/
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Never commit real credentials
+appsettings.*.local.json
+.env

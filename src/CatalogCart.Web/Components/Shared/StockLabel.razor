@@ -1,0 +1,19 @@
+@* "100 In stock" (green) as in the mockup, or "Out of stock" (red). *@
+@if (!InStock || Quantity is <= 0)
+{
+    <span class="stock stock--out">Out of stock</span>
+}
+else if (Quantity is not null)
+{
+    <span class="stock">@Quantity In stock</span>
+}
+else
+{
+    <span class="stock">In stock</span>
+}
+
+@code {
+    [Parameter] public int? Quantity { get; set; }
+
+    [Parameter] public bool InStock { get; set; } = true;
+}
